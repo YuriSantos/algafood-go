@@ -1,0 +1,38 @@
+server:
+  port: 8081
+  mode: "debug" # debug, release
+
+database:
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "password"
+  name: "algafood"
+  charset: "utf8mb4"
+  parseTime: true
+  loc: "Local"
+
+jwt:
+  jwks_url: "http://localhost:8080/oauth2/jwks"
+  issuer: "http://localhost:8080"
+  secret_key: "your-secret-key" # Used for HMAC signing if not using JWKS
+
+storage:
+  type: "local" # local, s3
+  local:
+    directory: "./uploads"
+  s3:
+    bucket: "algafood-bucket"
+    region: "us-east-1"
+    directory: "uploads"
+
+email:
+  type: "sandbox" # sandbox, smtp
+  from: "no-reply@algafood.com"
+  sandbox:
+    recipient: "dev@algafood.com"
+  smtp:
+    host: "smtp.sendgrid.net"
+    port: 587
+    username: "apikey"
+    password: "your-sendgrid-api-key"
