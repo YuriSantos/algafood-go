@@ -21,6 +21,7 @@ type Router struct {
 	pedidoHandler         *handler.PedidoHandler
 	estatisticaHandler    *handler.EstatisticaHandler
 	usuarioSvc            *service.UsuarioService
+	tokenBlacklistSvc     *service.TokenBlacklistService
 	cfg                   *config.Config
 }
 
@@ -37,6 +38,7 @@ func NewRouter(
 	pedidoHandler *handler.PedidoHandler,
 	estatisticaHandler *handler.EstatisticaHandler,
 	usuarioSvc *service.UsuarioService,
+	tokenBlacklistSvc *service.TokenBlacklistService,
 	cfg *config.Config,
 ) *Router {
 	return &Router{
@@ -52,6 +54,7 @@ func NewRouter(
 		pedidoHandler:         pedidoHandler,
 		estatisticaHandler:    estatisticaHandler,
 		usuarioSvc:            usuarioSvc,
+		tokenBlacklistSvc:     tokenBlacklistSvc,
 		cfg:                   cfg,
 	}
 }
@@ -69,7 +72,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 		r.setupPublicRoutes(v1)
 
 		// Protected routes (auth required)
-		v1.Use(middleware.AuthMiddleware(&r.cfg.JWT, r.usuarioSvc))
+		v1.Use(middleware.AuthMiddleware(&r.cfg.JWT, r.usuarioSvc, r.tokenBlacklistSvc))
 		r.setupProtectedRoutes(v1)
 	}
 }
@@ -80,6 +83,9 @@ func (r *Router) setupPublicRoutes(rg *gin.RouterGroup) {
 }
 
 func (r *Router) setupProtectedRoutes(rg *gin.RouterGroup) {
+	// Logout
+	rg.POST("/logout", r.usuarioHandler.Logout)
+
 	// Usuarios
 	usuarios := rg.Group("/usuarios")
 	{

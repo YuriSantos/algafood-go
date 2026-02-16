@@ -1,9 +1,15 @@
 package email
 
 import (
+	"context"
 	"fmt"
 	"log"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/ses"
+	"github.com/aws/aws-sdk-go-v2/service/ses/types"
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/yurisasc/algafood-go/internal/config"
@@ -22,14 +28,16 @@ type EmailService interface {
 }
 
 // NewEmailService creates a new email service based on configuration
-func NewEmailService(cfg *config.EmailConfig) EmailService {
+func NewEmailService(cfg *config.EmailConfig, awsCfg *config.AWSConfig) (EmailService, error) {
 	switch cfg.Type {
+	case "ses":
+		return NewSESEmailService(cfg, awsCfg)
 	case "smtp":
-		return NewSMTPEmailService(cfg)
+		return NewSMTPEmailService(cfg), nil
 	case "sandbox":
-		return NewSandboxEmailService(cfg)
+		return NewSandboxEmailService(cfg), nil
 	default:
-		return NewFakeEmailService()
+		return NewFakeEmailService(), nil
 	}
 }
 
@@ -103,5 +111,88 @@ func (s *SMTPEmailService) Send(message EmailMessage) error {
 		}
 	}
 
+	return nil
+}
+
+// SESEmailService sends emails via AWS SES
+type SESEmailService struct {
+	client *ses.Client
+	from   string
+}
+
+func NewSESEmailService(cfg *config.EmailConfig, awsCfg *config.AWSConfig) (*SESEmailService, error) {
+	var opts []func(*awsconfig.LoadOptions) error
+
+	opts = append(opts, awsconfig.WithRegion(cfg.SES.Region))
+
+	// Se tiver credenciais configuradas (LocalStack), usa elas
+	if awsCfg != nil && awsCfg.Credentials.AccessKey != "" {
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(
+				awsCfg.Credentials.AccessKey,
+				awsCfg.Credentials.SecretKey,
+				"",
+			),
+		))
+	}
+
+	sdkCfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Opções do cliente SES
+	var clientOpts []func(*ses.Options)
+
+	// Se tiver endpoint customizado (LocalStack), usa ele
+	if awsCfg != nil && awsCfg.EndpointURL != "" {
+		clientOpts = append(clientOpts, func(o *ses.Options) {
+			o.BaseEndpoint = aws.String(awsCfg.EndpointURL)
+		})
+	}
+
+	client := ses.NewFromConfig(sdkCfg, clientOpts...)
+
+	return &SESEmailService{
+		client: client,
+		from:   cfg.From,
+	}, nil
+}
+
+func (s *SESEmailService) Send(message EmailMessage) error {
+	ctx := context.Background()
+
+	toAddresses := make([]string, len(message.To))
+	copy(toAddresses, message.To)
+
+	input := &ses.SendEmailInput{
+		Destination: &types.Destination{
+			ToAddresses: toAddresses,
+		},
+		Message: &types.Message{
+			Body: &types.Body{
+				Html: &types.Content{
+					Charset: aws.String("UTF-8"),
+					Data:    aws.String(message.Body),
+				},
+				Text: &types.Content{
+					Charset: aws.String("UTF-8"),
+					Data:    aws.String(message.Body),
+				},
+			},
+			Subject: &types.Content{
+				Charset: aws.String("UTF-8"),
+				Data:    aws.String(message.Subject),
+			},
+		},
+		Source: aws.String(s.from),
+	}
+
+	result, err := s.client.SendEmail(ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to send email via SES: %w", err)
+	}
+
+	log.Printf("Email sent via SES. MessageId: %s", *result.MessageId)
 	return nil
 }

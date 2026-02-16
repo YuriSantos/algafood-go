@@ -21,7 +21,7 @@ const (
 )
 
 // AuthMiddleware valida o token JWT e carrega o usuário completo no contexto.
-func AuthMiddleware(cfg *config.JWTConfig, usuarioSvc *service.UsuarioService) gin.HandlerFunc {
+func AuthMiddleware(cfg *config.JWTConfig, usuarioSvc *service.UsuarioService, tokenBlacklistSvc *service.TokenBlacklistService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -38,6 +38,13 @@ func AuthMiddleware(cfg *config.JWTConfig, usuarioSvc *service.UsuarioService) g
 		}
 
 		tokenString := parts[1]
+
+		// Verifica se o token está na blacklist (logout)
+		if tokenBlacklistSvc != nil && tokenBlacklistSvc.IsBlacklisted(tokenString) {
+			exceptionhandler.HandleUnauthorized(c)
+			c.Abort()
+			return
+		}
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {

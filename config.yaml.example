@@ -1,21 +1,41 @@
 server:
-  port: 8081
-  mode: "debug" # debug, release
+  port: 8080
+  mode: "debug" # debug, release, test
+  compression_enabled: true
+  forward_headers_strategy: "framework"
 
 database:
-  host: "localhost"
+  host: "${DB_HOST:localhost}"
   port: 3306
   user: "root"
   password: "password"
   name: "algafood"
   charset: "utf8mb4"
   parseTime: true
-  loc: "Local"
+  loc: "UTC"
+  create_database_if_not_exist: true
 
 jwt:
   jwks_url: "http://localhost:8080/oauth2/jwks"
   issuer: "http://localhost:8080"
   secret_key: "your-secret-key" # Used for HMAC signing if not using JWKS
+  keystore:
+    jks_location: "base64:YOUR_KEYSTORE_BASE64"
+    password: "your-keystore-password"
+    keypair_alias: "algafood"
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+auth:
+  provider_url: "http://localhost:8080"
+  opaque_token:
+    introspection_uri: "http://localhost:8080/oauth2/introspect"
+    client_id: "algafood-backend"
+    client_secret: "backend123"
 
 storage:
   type: "local" # local, s3
@@ -27,7 +47,7 @@ storage:
     directory: "uploads"
 
 email:
-  type: "sandbox" # sandbox, smtp
+  type: "sandbox" # fake, sandbox, smtp, ses
   from: "no-reply@algafood.com"
   sandbox:
     recipient: "dev@algafood.com"
@@ -36,3 +56,41 @@ email:
     port: 587
     username: "apikey"
     password: "your-sendgrid-api-key"
+  ses:
+    region: "us-east-1"
+
+eventbridge:
+  type: "fake" # fake, eventbridge
+  region: "us-east-1"
+  event_bus_name: "algafood-event-bus"
+  source: "algafood-api"
+
+sqs:
+  type: "fake" # fake, sqs
+  region: "us-east-1"
+  queue_url: "algafood-pedido-status"
+  max_messages: 10
+  wait_time_seconds: 20
+  visibility_timeout: 30
+
+aws:
+  endpoint_url: "${AWS_ENDPOINT_URL:http://localhost:4566}"
+  region: "us-east-1"
+  credentials:
+    access_key: "test"
+    secret_key: "test"
+
+springdoc:
+  oauth_flow:
+    authorization_url: "http://127.0.0.1:8080/oauth2/authorize"
+    token_url: "http://127.0.0.1:8080/oauth2/token"
+  swagger_ui:
+    oauth:
+      client_id: "algafood-web"
+      client_secret: "web123"
+      use_pkce_with_authorization_code_grant: true
+      use_basic_authentication_with_access_code_grant: true
+  packages_to_scan: "com.algaworks.algafood.api"
+  paths_to_match: "/v1/**"
+  enable_hateoas: false
+

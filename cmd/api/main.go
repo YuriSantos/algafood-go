@@ -1,15 +1,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yurisasc/algafood-go/internal/api"
 	"github.com/yurisasc/algafood-go/internal/api/handler"
 	"github.com/yurisasc/algafood-go/internal/config"
 	"github.com/yurisasc/algafood-go/internal/domain/service"
+	"github.com/yurisasc/algafood-go/internal/infrastructure/email"
+	"github.com/yurisasc/algafood-go/internal/infrastructure/eventbridge"
+	"github.com/yurisasc/algafood-go/internal/infrastructure/notification"
 	infraRepo "github.com/yurisasc/algafood-go/internal/infrastructure/repository"
+	"github.com/yurisasc/algafood-go/internal/infrastructure/sqs"
 )
 
 func main() {
@@ -41,6 +49,15 @@ func main() {
 
 	// Initialize services
 	authSvc := service.NewAuthService(&cfg.JWT)
+	tokenBlacklistSvc := service.NewTokenBlacklistService(&cfg.Redis, &cfg.JWT)
+
+	// Verifica conexão com Redis
+	if err := tokenBlacklistSvc.Ping(); err != nil {
+		log.Printf("Warning: Failed to connect to Redis: %v. Token blacklist will not work correctly.", err)
+	} else {
+		log.Println("Connected to Redis successfully")
+	}
+
 	estadoSvc := service.NewEstadoService(estadoRepo)
 	cidadeSvc := service.NewCidadeService(cidadeRepo, estadoSvc)
 	cozinhaSvc := service.NewCozinhaService(cozinhaRepo)
@@ -51,7 +68,48 @@ func main() {
 	restauranteSvc := service.NewRestauranteService(restauranteRepo, cozinhaSvc, cidadeSvc, formaPagamentoSvc, usuarioSvc)
 	produtoSvc := service.NewProdutoService(produtoRepo, restauranteSvc)
 	pedidoSvc := service.NewPedidoService(pedidoRepo, restauranteSvc, cidadeSvc, usuarioSvc, produtoSvc, formaPagamentoSvc)
-	fluxoPedidoSvc := service.NewFluxoPedidoService(pedidoRepo, pedidoSvc)
+
+	// Initialize event publisher
+	eventPublisher, err := eventbridge.NewEventPublisher(&cfg.EventBridge, &cfg.SQS, &cfg.AWS)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize EventBridge publisher: %v. Using fake publisher.", err)
+		eventPublisher = eventbridge.NewFakeEventPublisher()
+	} else {
+		log.Println("EventBridge publisher initialized successfully")
+	}
+
+	fluxoPedidoSvc := service.NewFluxoPedidoService(pedidoRepo, pedidoSvc, eventPublisher)
+
+	// Initialize email service
+	emailSvc, err := email.NewEmailService(&cfg.Email, &cfg.AWS)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize email service: %v. Using fake email service.", err)
+		emailSvc = email.NewFakeEmailService()
+	} else {
+		log.Println("Email service initialized successfully")
+	}
+
+	// Initialize SQS listener for notifications
+	notificationHandler := notification.NewNotificationHandler(emailSvc)
+	sqsListener, err := sqs.NewSQSListenerFromConfig(&cfg.SQS, &cfg.AWS, notificationHandler)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize SQS listener: %v", err)
+	} else {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		sqsListener.Start(ctx)
+		log.Println("SQS listener started successfully")
+
+		// Graceful shutdown
+		go func() {
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+			<-sigChan
+			log.Println("Shutting down SQS listener...")
+			sqsListener.Stop()
+			cancel()
+		}()
+	}
 
 	// Initialize handlers
 	estadoHandler := handler.NewEstadoHandler(estadoSvc)
@@ -60,7 +118,7 @@ func main() {
 	formaPagamentoHandler := handler.NewFormaPagamentoHandler(formaPagamentoSvc)
 	permissaoHandler := handler.NewPermissaoHandler(permissaoSvc)
 	grupoHandler := handler.NewGrupoHandler(grupoSvc)
-	usuarioHandler := handler.NewUsuarioHandler(usuarioSvc, authSvc)
+	usuarioHandler := handler.NewUsuarioHandler(usuarioSvc, authSvc, tokenBlacklistSvc)
 	restauranteHandler := handler.NewRestauranteHandler(restauranteSvc)
 	produtoHandler := handler.NewProdutoHandler(produtoSvc)
 	pedidoHandler := handler.NewPedidoHandler(pedidoSvc, fluxoPedidoSvc)
@@ -83,7 +141,8 @@ func main() {
 		produtoHandler,
 		pedidoHandler,
 		estatisticaHandler,
-		usuarioSvc, // Modificado
+		usuarioSvc,
+		tokenBlacklistSvc,
 		cfg,
 	)
 	router.Setup(engine)

@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yurisasc/algafood-go/internal/api/assembler"
@@ -13,14 +14,16 @@ import (
 )
 
 type UsuarioHandler struct {
-	service     *service.UsuarioService
-	authService *service.AuthService
+	service               *service.UsuarioService
+	authService           *service.AuthService
+	tokenBlacklistService *service.TokenBlacklistService
 }
 
-func NewUsuarioHandler(service *service.UsuarioService, authService *service.AuthService) *UsuarioHandler {
+func NewUsuarioHandler(service *service.UsuarioService, authService *service.AuthService, tokenBlacklistService *service.TokenBlacklistService) *UsuarioHandler {
 	return &UsuarioHandler{
-		service:     service,
-		authService: authService,
+		service:               service,
+		authService:           authService,
+		tokenBlacklistService: tokenBlacklistService,
 	}
 }
 
@@ -58,6 +61,30 @@ func (h *UsuarioHandler) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
+// Logout invalida o token JWT atual.
+func (h *UsuarioHandler) Logout(c *gin.Context) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	tokenString := parts[1]
+	if err := h.tokenBlacklistService.InvalidateToken(tokenString); err != nil {
+		// Mesmo se houver erro ao invalidar, retornamos sucesso para o cliente
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func (h *UsuarioHandler) Listar(c *gin.Context) {

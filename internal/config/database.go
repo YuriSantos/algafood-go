@@ -1,6 +1,7 @@
 package config
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,13 @@ import (
 )
 
 func NewDatabase(cfg *DatabaseConfig) (*gorm.DB, error) {
+	// Create database if not exists
+	if cfg.CreateDatabaseIfNotExist {
+		if err := createDatabaseIfNotExists(cfg); err != nil {
+			log.Printf("Warning: could not create database: %v", err)
+		}
+	}
+
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
 		logger.Config{
@@ -40,4 +48,25 @@ func NewDatabase(cfg *DatabaseConfig) (*gorm.DB, error) {
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	return db, nil
+}
+
+func createDatabaseIfNotExists(cfg *DatabaseConfig) error {
+	// Connect without specifying database name
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=%s&parseTime=%t&loc=%s",
+		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Charset, cfg.ParseTime, cfg.Loc)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return fmt.Errorf("failed to connect to MySQL server: %w", err)
+	}
+	defer db.Close()
+
+	// Create database if not exists
+	_, err = db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", cfg.Name))
+	if err != nil {
+		return fmt.Errorf("failed to create database: %w", err)
+	}
+
+	log.Printf("Database '%s' is ready", cfg.Name)
+	return nil
 }
