@@ -5,16 +5,16 @@ import (
 	"gorm.io/gorm"
 )
 
-type usuarioRepositoryImpl struct {
+type UsuarioRepositoryImpl struct {
 	db *gorm.DB
 }
 
 // NewUsuarioRepository creates a new UsuarioRepository
-func NewUsuarioRepository(db *gorm.DB) *usuarioRepositoryImpl {
-	return &usuarioRepositoryImpl{db: db}
+func NewUsuarioRepository(db *gorm.DB) *UsuarioRepositoryImpl {
+	return &UsuarioRepositoryImpl{db: db}
 }
 
-func (r *usuarioRepositoryImpl) FindAll() ([]model.Usuario, error) {
+func (r *UsuarioRepositoryImpl) FindAll() ([]model.Usuario, error) {
 	var usuarios []model.Usuario
 	if err := r.db.Find(&usuarios).Error; err != nil {
 		return nil, err
@@ -22,15 +22,15 @@ func (r *usuarioRepositoryImpl) FindAll() ([]model.Usuario, error) {
 	return usuarios, nil
 }
 
-func (r *usuarioRepositoryImpl) FindByID(id uint64) (*model.Usuario, error) {
+func (r *UsuarioRepositoryImpl) FindByID(id uint64) (*model.Usuario, error) {
 	var usuario model.Usuario
-	if err := r.db.Preload("Grupos").First(&usuario, id).Error; err != nil {
+	if err := r.db.Preload("Grupos.Permissoes").First(&usuario, id).Error; err != nil {
 		return nil, err
 	}
 	return &usuario, nil
 }
 
-func (r *usuarioRepositoryImpl) FindByEmail(email string) (*model.Usuario, error) {
+func (r *UsuarioRepositoryImpl) FindByEmail(email string) (*model.Usuario, error) {
 	var usuario model.Usuario
 	if err := r.db.Where("email = ?", email).First(&usuario).Error; err != nil {
 		return nil, err
@@ -38,14 +38,14 @@ func (r *usuarioRepositoryImpl) FindByEmail(email string) (*model.Usuario, error
 	return &usuario, nil
 }
 
-func (r *usuarioRepositoryImpl) Save(usuario *model.Usuario) error {
+func (r *UsuarioRepositoryImpl) Save(usuario *model.Usuario) error {
 	return r.db.Save(usuario).Error
 }
 
-func (r *usuarioRepositoryImpl) AddGrupo(usuarioID, grupoID uint64) error {
+func (r *UsuarioRepositoryImpl) AddGrupo(usuarioID, grupoID uint64) error {
 	return r.db.Exec("INSERT INTO usuario_grupo (usuario_id, grupo_id) VALUES (?, ?)", usuarioID, grupoID).Error
 }
 
-func (r *usuarioRepositoryImpl) RemoveGrupo(usuarioID, grupoID uint64) error {
+func (r *UsuarioRepositoryImpl) RemoveGrupo(usuarioID, grupoID uint64) error {
 	return r.db.Exec("DELETE FROM usuario_grupo WHERE usuario_id = ? AND grupo_id = ?", usuarioID, grupoID).Error
 }

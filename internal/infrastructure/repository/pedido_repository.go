@@ -9,16 +9,16 @@ import (
 	"gorm.io/gorm"
 )
 
-type pedidoRepositoryImpl struct {
+type PedidoRepositoryImpl struct {
 	db *gorm.DB
 }
 
 // NewPedidoRepository creates a new PedidoRepository
-func NewPedidoRepository(db *gorm.DB) *pedidoRepositoryImpl {
-	return &pedidoRepositoryImpl{db: db}
+func NewPedidoRepository(db *gorm.DB) *PedidoRepositoryImpl {
+	return &PedidoRepositoryImpl{db: db}
 }
 
-func (r *pedidoRepositoryImpl) FindAll(filter *domainRepo.PedidoFilter, page *pagination.Pageable) (*pagination.Page[model.Pedido], error) {
+func (r *PedidoRepositoryImpl) FindAll(filter *domainRepo.PedidoFilter, page *pagination.Pageable) (*pagination.Page[model.Pedido], error) {
 	var pedidos []model.Pedido
 	var total int64
 
@@ -47,10 +47,8 @@ func (r *pedidoRepositoryImpl) FindAll(filter *domainRepo.PedidoFilter, page *pa
 
 	query.Count(&total)
 
+	// Busca apenas dados básicos do pedido (sem Preload pesados)
 	if err := query.
-		Preload("Restaurante").
-		Preload("Cliente").
-		Preload("FormaPagamento").
 		Offset(page.Offset()).
 		Limit(page.Size).
 		Order("data_criacao DESC").
@@ -61,7 +59,22 @@ func (r *pedidoRepositoryImpl) FindAll(filter *domainRepo.PedidoFilter, page *pa
 	return pagination.NewPage(pedidos, total, page), nil
 }
 
-func (r *pedidoRepositoryImpl) FindByCodigo(codigo string) (*model.Pedido, error) {
+func (r *PedidoRepositoryImpl) FindByCodigo(codigo string) (*model.Pedido, error) {
+	var pedido model.Pedido
+	// Busca apenas os itens do pedido (necessário para cálculos)
+	// Os outros relacionamentos serão populados via cache no serviço
+	if err := r.db.
+		Preload("Itens").
+		Preload("Itens.Produto").
+		Where("codigo = ?", codigo).
+		First(&pedido).Error; err != nil {
+		return nil, err
+	}
+	return &pedido, nil
+}
+
+// FindByCodigoCompleto busca o pedido com todos os relacionamentos (para casos específicos)
+func (r *PedidoRepositoryImpl) FindByCodigoCompleto(codigo string) (*model.Pedido, error) {
 	var pedido model.Pedido
 	if err := r.db.
 		Preload("Restaurante").
@@ -79,11 +92,11 @@ func (r *pedidoRepositoryImpl) FindByCodigo(codigo string) (*model.Pedido, error
 	return &pedido, nil
 }
 
-func (r *pedidoRepositoryImpl) Save(pedido *model.Pedido) error {
+func (r *PedidoRepositoryImpl) Save(pedido *model.Pedido) error {
 	return r.db.Save(pedido).Error
 }
 
-func (r *pedidoRepositoryImpl) IsPedidoGerenciadoPor(codigoPedido string, usuarioID uint64) (bool, error) {
+func (r *PedidoRepositoryImpl) IsPedidoGerenciadoPor(codigoPedido string, usuarioID uint64) (bool, error) {
 	var count int64
 	if err := r.db.Table("pedido p").
 		Joins("JOIN restaurante_usuario_responsavel rur ON rur.restaurante_id = p.restaurante_id").

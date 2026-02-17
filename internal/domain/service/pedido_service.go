@@ -38,7 +38,17 @@ func NewPedidoService(
 }
 
 func (s *PedidoService) Pesquisar(filter *repository.PedidoFilter, page *pagination.Pageable) (*pagination.Page[model.Pedido], error) {
-	return s.repo.FindAll(filter, page)
+	result, err := s.repo.FindAll(filter, page)
+	if err != nil {
+		return nil, err
+	}
+
+	// Popula relacionamentos usando cache
+	for i := range result.Content {
+		s.populateRelacionamentos(&result.Content[i])
+	}
+
+	return result, nil
 }
 
 func (s *PedidoService) FindByCodigo(codigo string) (*model.Pedido, error) {
@@ -49,18 +59,53 @@ func (s *PedidoService) FindByCodigo(codigo string) (*model.Pedido, error) {
 		}
 		return nil, err
 	}
+
+	// Popula relacionamentos usando cache
+	s.populateRelacionamentos(pedido)
+
 	return pedido, nil
 }
 
+// populateRelacionamentos popula os relacionamentos do pedido usando serviços com cache
+func (s *PedidoService) populateRelacionamentos(pedido *model.Pedido) {
+	// Popula restaurante (usa cache)
+	if pedido.RestauranteID > 0 && pedido.Restaurante.ID == 0 {
+		if restaurante, err := s.restauranteSvc.FindByID(pedido.RestauranteID); err == nil {
+			pedido.Restaurante = *restaurante
+		}
+	}
+
+	// Popula cliente (usa cache)
+	if pedido.ClienteID > 0 && pedido.Cliente.ID == 0 {
+		if cliente, err := s.usuarioSvc.FindByID(pedido.ClienteID); err == nil {
+			pedido.Cliente = *cliente
+		}
+	}
+
+	// Popula forma de pagamento (usa cache)
+	if pedido.FormaPagamentoID > 0 && pedido.FormaPagamento.ID == 0 {
+		if formaPagamento, err := s.formaPagamentoSvc.FindByID(pedido.FormaPagamentoID); err == nil {
+			pedido.FormaPagamento = *formaPagamento
+		}
+	}
+
+	// Popula cidade do endereço de entrega (usa cache)
+	if pedido.EnderecoEntrega.CidadeID > 0 && pedido.EnderecoEntrega.Cidade.ID == 0 {
+		if cidade, err := s.cidadeSvc.FindByID(pedido.EnderecoEntrega.CidadeID); err == nil {
+			pedido.EnderecoEntrega.Cidade = *cidade
+		}
+	}
+}
+
 func (s *PedidoService) Emitir(pedido *model.Pedido) error {
-	// Validate restaurante
+	// Validate restaurante (usa cache)
 	restaurante, err := s.restauranteSvc.FindByID(pedido.RestauranteID)
 	if err != nil {
 		return err
 	}
 	pedido.Restaurante = *restaurante
 
-	// Validate forma pagamento
+	// Validate forma pagamento (usa cache)
 	formaPagamento, err := s.formaPagamentoSvc.FindByID(pedido.FormaPagamentoID)
 	if err != nil {
 		return err
@@ -72,14 +117,14 @@ func (s *PedidoService) Emitir(pedido *model.Pedido) error {
 	}
 	pedido.FormaPagamento = *formaPagamento
 
-	// Validate cliente
+	// Validate cliente (usa cache)
 	cliente, err := s.usuarioSvc.FindByID(pedido.ClienteID)
 	if err != nil {
 		return err
 	}
 	pedido.Cliente = *cliente
 
-	// Validate cidade
+	// Validate cidade (usa cache)
 	if pedido.EnderecoEntrega.CidadeID != 0 {
 		cidade, err := s.cidadeSvc.FindByID(pedido.EnderecoEntrega.CidadeID)
 		if err != nil {

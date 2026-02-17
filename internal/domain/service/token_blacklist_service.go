@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -72,14 +73,21 @@ func (s *TokenBlacklistService) InvalidateToken(tokenString string) error {
 
 // IsBlacklisted verifica se um token está na blacklist no Redis.
 func (s *TokenBlacklistService) IsBlacklisted(tokenString string) bool {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
 	key := tokenBlacklistPrefix + tokenString
 
 	exists, err := s.redisClient.Exists(ctx, key).Result()
 	if err != nil {
-		// Em caso de erro, considera que o token não está na blacklist
+		// Em caso de erro ou timeout, considera que o token não está na blacklist
 		// para não bloquear usuários em caso de falha do Redis
+		log.Printf("[BLACKLIST] Erro ao verificar blacklist: %v", err)
 		return false
+	}
+
+	if exists > 0 {
+		log.Printf("[BLACKLIST] Token está na blacklist.")
 	}
 
 	return exists > 0

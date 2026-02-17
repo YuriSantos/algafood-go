@@ -24,15 +24,15 @@ func main() {
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("Falha ao carregar configuração: %v", err)
 	}
 
 	// Connect to database
 	db, err := config.NewDatabase(&cfg.Database)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Falha ao conectar ao banco de dados: %v", err)
 	}
-	log.Println("Connected to database successfully")
+	log.Println("Conectado ao banco de dados com sucesso")
 
 	// Initialize repositories
 	estadoRepo := infraRepo.NewEstadoRepository(db)
@@ -50,32 +50,35 @@ func main() {
 	// Initialize services
 	authSvc := service.NewAuthService(&cfg.JWT)
 	tokenBlacklistSvc := service.NewTokenBlacklistService(&cfg.Redis, &cfg.JWT)
+	userCacheSvc := service.NewUserCacheService(&cfg.Redis)
+	locationCacheSvc := service.NewLocationCacheService(&cfg.Redis)
+	businessCacheSvc := service.NewBusinessCacheService(&cfg.Redis)
 
 	// Verifica conexão com Redis
 	if err := tokenBlacklistSvc.Ping(); err != nil {
-		log.Printf("Warning: Failed to connect to Redis: %v. Token blacklist will not work correctly.", err)
+		log.Printf("Aviso: Falha ao conectar ao Redis: %v. A blacklist de tokens e cache não funcionarão corretamente.", err)
 	} else {
-		log.Println("Connected to Redis successfully")
+		log.Println("Conectado ao Redis com sucesso")
 	}
 
-	estadoSvc := service.NewEstadoService(estadoRepo)
-	cidadeSvc := service.NewCidadeService(cidadeRepo, estadoSvc)
-	cozinhaSvc := service.NewCozinhaService(cozinhaRepo)
-	formaPagamentoSvc := service.NewFormaPagamentoService(formaPagamentoRepo)
+	estadoSvc := service.NewEstadoService(estadoRepo, locationCacheSvc)
+	cidadeSvc := service.NewCidadeService(cidadeRepo, estadoSvc, locationCacheSvc)
+	cozinhaSvc := service.NewCozinhaService(cozinhaRepo, businessCacheSvc)
+	formaPagamentoSvc := service.NewFormaPagamentoService(formaPagamentoRepo, businessCacheSvc)
 	permissaoSvc := service.NewPermissaoService(permissaoRepo)
 	grupoSvc := service.NewGrupoService(grupoRepo, permissaoSvc)
-	usuarioSvc := service.NewUsuarioService(usuarioRepo, grupoSvc)
-	restauranteSvc := service.NewRestauranteService(restauranteRepo, cozinhaSvc, cidadeSvc, formaPagamentoSvc, usuarioSvc)
+	usuarioSvc := service.NewUsuarioService(usuarioRepo, grupoSvc, userCacheSvc)
+	restauranteSvc := service.NewRestauranteService(restauranteRepo, cozinhaSvc, cidadeSvc, formaPagamentoSvc, usuarioSvc, businessCacheSvc)
 	produtoSvc := service.NewProdutoService(produtoRepo, restauranteSvc)
 	pedidoSvc := service.NewPedidoService(pedidoRepo, restauranteSvc, cidadeSvc, usuarioSvc, produtoSvc, formaPagamentoSvc)
 
 	// Initialize event publisher
 	eventPublisher, err := eventbridge.NewEventPublisher(&cfg.EventBridge, &cfg.SQS, &cfg.AWS)
 	if err != nil {
-		log.Printf("Warning: Failed to initialize EventBridge publisher: %v. Using fake publisher.", err)
+		log.Printf("Aviso: Falha ao inicializar publicador EventBridge: %v. Usando publicador fake.", err)
 		eventPublisher = eventbridge.NewFakeEventPublisher()
 	} else {
-		log.Println("EventBridge publisher initialized successfully")
+		log.Println("Publicador EventBridge inicializado com sucesso")
 	}
 
 	fluxoPedidoSvc := service.NewFluxoPedidoService(pedidoRepo, pedidoSvc, eventPublisher)
