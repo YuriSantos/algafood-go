@@ -164,13 +164,13 @@ func (p *EventBridgePublisher) Publish(ctx context.Context, domainEvent event.Do
 	log.Printf("Evento publicado com sucesso no EventBridge: %s (EventId: %s)",
 		domainEvent.EventType(), eventID)
 
-	// Se directSQS estiver habilitado (LocalStack), envia também diretamente para SQS
+	/*// Se directSQS estiver habilitado (LocalStack), envia também diretamente para SQS
 	if p.directSQS && p.sqsQueueURL != "" {
 		if err := p.publishToSQS(ctx, domainEvent, detail, eventID); err != nil {
 			log.Printf("Aviso: Falha ao publicar evento diretamente no SQS: %v", err)
 			// Não retorna erro pois o evento já foi publicado no EventBridge
 		}
-	}
+	}*/
 
 	return nil
 }
