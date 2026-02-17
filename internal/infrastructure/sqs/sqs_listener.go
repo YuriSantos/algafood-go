@@ -63,7 +63,7 @@ func NewSQSListener(cfg *config.SQSConfig, awsCfg *config.AWSConfig, handler Mes
 
 	sdkCfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		return nil, fmt.Errorf("falha ao carregar configuração AWS: %w", err)
 	}
 
 	// Opções do cliente SQS
@@ -82,7 +82,7 @@ func NewSQSListener(cfg *config.SQSConfig, awsCfg *config.AWSConfig, handler Mes
 	queueURL := cfg.QueueURL
 	if !isURL(queueURL) {
 		// Se não for URL completa, tenta obter via GetQueueUrl
-		log.Printf("Getting queue URL for queue name: %s", queueURL)
+		log.Printf("Obtendo URL da fila para o nome: %s", queueURL)
 		result, err := client.GetQueueUrl(context.Background(), &sqs.GetQueueUrlInput{
 			QueueName: aws.String(queueURL),
 		})
@@ -90,17 +90,17 @@ func NewSQSListener(cfg *config.SQSConfig, awsCfg *config.AWSConfig, handler Mes
 			// Fallback: construir URL manualmente para LocalStack
 			if awsCfg != nil && awsCfg.EndpointURL != "" {
 				queueURL = fmt.Sprintf("%s/000000000000/%s", awsCfg.EndpointURL, cfg.QueueURL)
-				log.Printf("Using fallback queue URL: %s", queueURL)
+				log.Printf("Usando URL de fallback da fila: %s", queueURL)
 			} else {
-				return nil, fmt.Errorf("failed to get queue URL: %w", err)
+				return nil, fmt.Errorf("falha ao obter URL da fila: %w", err)
 			}
 		} else {
 			queueURL = *result.QueueUrl
-			log.Printf("Got queue URL from AWS: %s", queueURL)
+			log.Printf("URL da fila obtida da AWS: %s", queueURL)
 		}
 	}
 
-	log.Printf("SQS Listener configured - Queue URL: %s, Region: %s", queueURL, cfg.Region)
+	log.Printf("SQS Listener configurado - URL da Fila: %s, Região: %s", queueURL, cfg.Region)
 
 	return &SQSListener{
 		client:            client,
@@ -121,16 +121,16 @@ func isURL(s string) bool {
 // Start inicia o listener em uma goroutine
 func (l *SQSListener) Start(ctx context.Context) {
 	l.running = true
-	log.Printf("Starting SQS listener for queue: %s", l.queueURL)
+	log.Printf("Iniciando SQS listener para a fila: %s", l.queueURL)
 
 	go func() {
 		for l.running {
 			select {
 			case <-l.stopChan:
-				log.Println("SQS listener stopped")
+				log.Println("SQS listener parado")
 				return
 			case <-ctx.Done():
-				log.Println("SQS listener context cancelled")
+				log.Println("Contexto do SQS listener cancelado")
 				return
 			default:
 				l.pollMessages(ctx)
@@ -159,29 +159,29 @@ func (l *SQSListener) pollMessages(ctx context.Context) {
 
 	result, err := l.client.ReceiveMessage(ctx, input)
 	if err != nil {
-		log.Printf("Error receiving messages from SQS (queue: %s): %v", l.queueURL, err)
-		time.Sleep(5 * time.Second) // Backoff on error
+		log.Printf("Erro ao receber mensagens do SQS (fila: %s): %v", l.queueURL, err)
+		time.Sleep(5 * time.Second) // Backoff em caso de erro
 		return
 	}
 
 	if len(result.Messages) > 0 {
-		log.Printf("Received %d messages from SQS queue: %s", len(result.Messages), l.queueURL)
+		log.Printf("Recebidas %d mensagens da fila SQS: %s", len(result.Messages), l.queueURL)
 	}
 
 	for _, msg := range result.Messages {
-		log.Printf("Processing SQS message ID: %s, Body: %s", *msg.MessageId, *msg.Body)
+		log.Printf("Processando mensagem SQS ID: %s, Corpo: %s", *msg.MessageId, *msg.Body)
 
 		if err := l.processMessage(ctx, msg); err != nil {
-			log.Printf("Error processing message %s: %v", *msg.MessageId, err)
+			log.Printf("Erro ao processar mensagem %s: %v", *msg.MessageId, err)
 			// Não deleta a mensagem para que seja reprocessada
 			continue
 		}
 
 		// Deleta a mensagem após processamento bem-sucedido
 		if err := l.deleteMessage(ctx, msg.ReceiptHandle); err != nil {
-			log.Printf("Error deleting message %s: %v", *msg.MessageId, err)
+			log.Printf("Erro ao deletar mensagem %s: %v", *msg.MessageId, err)
 		} else {
-			log.Printf("Successfully processed and deleted message %s", *msg.MessageId)
+			log.Printf("Mensagem processada e deletada com sucesso: %s", *msg.MessageId)
 		}
 	}
 }
@@ -190,10 +190,10 @@ func (l *SQSListener) pollMessages(ctx context.Context) {
 func (l *SQSListener) processMessage(ctx context.Context, msg types.Message) error {
 	var sqsMessage SQSMessage
 	if err := json.Unmarshal([]byte(*msg.Body), &sqsMessage); err != nil {
-		return fmt.Errorf("failed to unmarshal message: %w", err)
+		return fmt.Errorf("falha ao deserializar mensagem: %w", err)
 	}
 
-	log.Printf("Processing message: %s, DetailType: %s", *msg.MessageId, sqsMessage.DetailType)
+	log.Printf("Processando mensagem: %s, Tipo de Detalhe: %s", *msg.MessageId, sqsMessage.DetailType)
 
 	return l.handler.Handle(ctx, &sqsMessage)
 }
@@ -217,11 +217,11 @@ func NewFakeSQSListener(handler MessageHandler) *FakeSQSListener {
 }
 
 func (l *FakeSQSListener) Start(ctx context.Context) {
-	log.Println("[FAKE SQS] Listener started (no-op)")
+	log.Println("[FAKE SQS] Listener iniciado (sem operação)")
 }
 
 func (l *FakeSQSListener) Stop() {
-	log.Println("[FAKE SQS] Listener stopped (no-op)")
+	log.Println("[FAKE SQS] Listener parado (sem operação)")
 }
 
 // SQSListenerInterface define a interface comum para listeners

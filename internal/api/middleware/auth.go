@@ -48,7 +48,7 @@ func AuthMiddleware(cfg *config.JWTConfig, usuarioSvc *service.UsuarioService, t
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, exception.NewAuthenticationException("Metodo de assinatura de token invalido")
+				return nil, exception.NewAuthenticationException("Método de assinatura de token inválido")
 			}
 			return []byte(cfg.SecretKey), nil
 		})

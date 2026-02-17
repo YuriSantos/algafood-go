@@ -15,19 +15,19 @@ import (
 	"github.com/yurisasc/algafood-go/internal/config"
 )
 
-// EmailMessage represents an email to be sent
+// EmailMessage representa um email a ser enviado
 type EmailMessage struct {
 	To      []string
 	Subject string
 	Body    string
 }
 
-// EmailService interface for sending emails
+// EmailService interface para envio de emails
 type EmailService interface {
 	Send(message EmailMessage) error
 }
 
-// NewEmailService creates a new email service based on configuration
+// NewEmailService cria um novo serviço de email baseado na configuração
 func NewEmailService(cfg *config.EmailConfig, awsCfg *config.AWSConfig) (EmailService, error) {
 	switch cfg.Type {
 	case "ses":
@@ -41,7 +41,7 @@ func NewEmailService(cfg *config.EmailConfig, awsCfg *config.AWSConfig) (EmailSe
 	}
 }
 
-// FakeEmailService logs emails instead of sending
+// FakeEmailService registra emails em log ao invés de enviar
 type FakeEmailService struct{}
 
 func NewFakeEmailService() *FakeEmailService {
@@ -49,12 +49,12 @@ func NewFakeEmailService() *FakeEmailService {
 }
 
 func (s *FakeEmailService) Send(message EmailMessage) error {
-	log.Printf("[FAKE EMAIL] To: %v, Subject: %s, Body: %s",
+	log.Printf("[FAKE EMAIL] Para: %v, Assunto: %s, Corpo: %s",
 		message.To, message.Subject, message.Body)
 	return nil
 }
 
-// SandboxEmailService sends all emails to a specific recipient
+// SandboxEmailService envia todos os emails para um destinatário específico
 type SandboxEmailService struct {
 	recipient string
 	from      string
@@ -70,16 +70,16 @@ func NewSandboxEmailService(cfg *config.EmailConfig) *SandboxEmailService {
 }
 
 func (s *SandboxEmailService) Send(message EmailMessage) error {
-	// Override recipients with sandbox recipient
+	// Sobrescreve destinatários com destinatário sandbox
 	sandboxMessage := EmailMessage{
 		To:      []string{s.recipient},
 		Subject: "[SANDBOX] " + message.Subject,
-		Body:    fmt.Sprintf("Original recipients: %v\n\n%s", message.To, message.Body),
+		Body:    fmt.Sprintf("Destinatários originais: %v\n\n%s", message.To, message.Body),
 	}
 	return s.smtpSvc.Send(sandboxMessage)
 }
 
-// SMTPEmailService sends emails via SendGrid
+// SMTPEmailService envia emails via SendGrid
 type SMTPEmailService struct {
 	apiKey string
 	from   string
@@ -87,7 +87,7 @@ type SMTPEmailService struct {
 
 func NewSMTPEmailService(cfg *config.EmailConfig) *SMTPEmailService {
 	return &SMTPEmailService{
-		apiKey: cfg.SMTP.Password, // SendGrid API key is stored as password
+		apiKey: cfg.SMTP.Password, // Chave API do SendGrid armazenada como password
 		from:   cfg.From,
 	}
 }
@@ -102,11 +102,11 @@ func (s *SMTPEmailService) Send(message EmailMessage) error {
 
 		response, err := client.Send(email)
 		if err != nil {
-			return fmt.Errorf("failed to send email: %w", err)
+			return fmt.Errorf("falha ao enviar email: %w", err)
 		}
 
 		if response.StatusCode >= 400 {
-			return fmt.Errorf("email sending failed with status %d: %s",
+			return fmt.Errorf("falha ao enviar email com status %d: %s",
 				response.StatusCode, response.Body)
 		}
 	}
@@ -114,7 +114,7 @@ func (s *SMTPEmailService) Send(message EmailMessage) error {
 	return nil
 }
 
-// SESEmailService sends emails via AWS SES
+// SESEmailService envia emails via AWS SES
 type SESEmailService struct {
 	client *ses.Client
 	from   string
@@ -138,7 +138,7 @@ func NewSESEmailService(cfg *config.EmailConfig, awsCfg *config.AWSConfig) (*SES
 
 	sdkCfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		return nil, fmt.Errorf("falha ao carregar configuração AWS: %w", err)
 	}
 
 	// Opções do cliente SES
@@ -190,9 +190,9 @@ func (s *SESEmailService) Send(message EmailMessage) error {
 
 	result, err := s.client.SendEmail(ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to send email via SES: %w", err)
+		return fmt.Errorf("falha ao enviar email via SES: %w", err)
 	}
 
-	log.Printf("Email sent via SES. MessageId: %s", *result.MessageId)
+	log.Printf("Email enviado via SES. MessageId: %s", *result.MessageId)
 	return nil
 }

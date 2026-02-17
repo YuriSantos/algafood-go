@@ -64,7 +64,7 @@ func NewEventBridgePublisher(cfg *config.EventBridgeConfig, sqsCfg *config.SQSCo
 
 	sdkCfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		return nil, fmt.Errorf("falha ao carregar configuração AWS: %w", err)
 	}
 
 	// Opções do cliente EventBridge
@@ -98,7 +98,7 @@ func NewEventBridgePublisher(cfg *config.EventBridgeConfig, sqsCfg *config.SQSCo
 				QueueName: aws.String(sqsCfg.QueueURL),
 			})
 			if err != nil {
-				log.Printf("Warning: Could not get SQS queue URL: %v", err)
+				log.Printf("Aviso: Não foi possível obter URL da fila SQS: %v", err)
 				if awsCfg != nil && awsCfg.EndpointURL != "" {
 					sqsQueueURL = fmt.Sprintf("%s/000000000000/%s", awsCfg.EndpointURL, sqsCfg.QueueURL)
 				}
@@ -106,7 +106,7 @@ func NewEventBridgePublisher(cfg *config.EventBridgeConfig, sqsCfg *config.SQSCo
 				sqsQueueURL = *result.QueueUrl
 			}
 		}
-		log.Printf("EventBridge publisher configured with SQS queue: %s (direct: %v)", sqsQueueURL, directSQS)
+		log.Printf("Publicador EventBridge configurado com fila SQS: %s (direto: %v)", sqsQueueURL, directSQS)
 	}
 
 	return &EventBridgePublisher{
@@ -124,12 +124,12 @@ func NewEventBridgePublisher(cfg *config.EventBridgeConfig, sqsCfg *config.SQSCo
 func (p *EventBridgePublisher) Publish(ctx context.Context, domainEvent event.DomainEvent) error {
 	detail, err := json.Marshal(domainEvent)
 	if err != nil {
-		return fmt.Errorf("failed to marshal event: %w", err)
+		return fmt.Errorf("falha ao serializar evento: %w", err)
 	}
 
-	log.Printf("Publishing event to EventBridge - Bus: %s, Source: %s, Type: %s",
+	log.Printf("Publicando evento no EventBridge - Bus: %s, Origem: %s, Tipo: %s",
 		p.eventBusName, p.source, domainEvent.EventType())
-	log.Printf("Event detail: %s", string(detail))
+	log.Printf("Detalhe do evento: %s", string(detail))
 
 	input := &eventbridge.PutEventsInput{
 		Entries: []types.PutEventsRequestEntry{
@@ -145,29 +145,29 @@ func (p *EventBridgePublisher) Publish(ctx context.Context, domainEvent event.Do
 
 	result, err := p.client.PutEvents(ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to publish event to EventBridge: %w", err)
+		return fmt.Errorf("falha ao publicar evento no EventBridge: %w", err)
 	}
 
 	if result.FailedEntryCount > 0 {
 		for _, entry := range result.Entries {
 			if entry.ErrorCode != nil {
-				return fmt.Errorf("failed to publish event: %s - %s", *entry.ErrorCode, *entry.ErrorMessage)
+				return fmt.Errorf("falha ao publicar evento: %s - %s", *entry.ErrorCode, *entry.ErrorMessage)
 			}
 		}
 	}
 
-	eventID := "unknown"
+	eventID := "desconhecido"
 	if len(result.Entries) > 0 && result.Entries[0].EventId != nil {
 		eventID = *result.Entries[0].EventId
 	}
 
-	log.Printf("Event published successfully to EventBridge: %s (EventId: %s)",
+	log.Printf("Evento publicado com sucesso no EventBridge: %s (EventId: %s)",
 		domainEvent.EventType(), eventID)
 
 	// Se directSQS estiver habilitado (LocalStack), envia também diretamente para SQS
 	if p.directSQS && p.sqsQueueURL != "" {
 		if err := p.publishToSQS(ctx, domainEvent, detail, eventID); err != nil {
-			log.Printf("Warning: Failed to publish event directly to SQS: %v", err)
+			log.Printf("Aviso: Falha ao publicar evento diretamente no SQS: %v", err)
 			// Não retorna erro pois o evento já foi publicado no EventBridge
 		}
 	}
@@ -191,7 +191,7 @@ func (p *EventBridgePublisher) publishToSQS(ctx context.Context, domainEvent eve
 
 	messageBody, err := json.Marshal(sqsMessage)
 	if err != nil {
-		return fmt.Errorf("failed to marshal SQS message: %w", err)
+		return fmt.Errorf("falha ao serializar mensagem SQS: %w", err)
 	}
 
 	_, err = p.sqsClient.SendMessage(ctx, &sqs.SendMessageInput{
@@ -199,10 +199,10 @@ func (p *EventBridgePublisher) publishToSQS(ctx context.Context, domainEvent eve
 		MessageBody: aws.String(string(messageBody)),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to send message to SQS: %w", err)
+		return fmt.Errorf("falha ao enviar mensagem para o SQS: %w", err)
 	}
 
-	log.Printf("Event also published directly to SQS: %s (Queue: %s)", domainEvent.EventType(), p.sqsQueueURL)
+	log.Printf("Evento também publicado diretamente no SQS: %s (Fila: %s)", domainEvent.EventType(), p.sqsQueueURL)
 	return nil
 }
 
@@ -215,7 +215,7 @@ func NewFakeEventPublisher() *FakeEventPublisher {
 
 func (p *FakeEventPublisher) Publish(ctx context.Context, domainEvent event.DomainEvent) error {
 	detail, _ := json.MarshalIndent(domainEvent, "", "  ")
-	log.Printf("[FAKE EVENT] Type: %s, Time: %s, Detail:\n%s",
+	log.Printf("[FAKE EVENTO] Tipo: %s, Hora: %s, Detalhe:\n%s",
 		domainEvent.EventType(),
 		domainEvent.OccurredAt().Format(time.RFC3339),
 		string(detail))

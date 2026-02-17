@@ -41,7 +41,7 @@ func NewNotificationHandler(emailService email.EmailService) *NotificationHandle
 
 // Handle processa uma mensagem SQS
 func (h *NotificationHandler) Handle(ctx context.Context, message *sqs.SQSMessage) error {
-	log.Printf("Handling notification for event: %s", message.DetailType)
+	log.Printf("Processando notificação para evento: %s", message.DetailType)
 
 	switch message.DetailType {
 	case "PedidoConfirmado":
@@ -51,7 +51,7 @@ func (h *NotificationHandler) Handle(ctx context.Context, message *sqs.SQSMessag
 	case "PedidoEntregue":
 		return h.handlePedidoEntregue(ctx, message.Detail)
 	default:
-		log.Printf("Unknown event type: %s", message.DetailType)
+		log.Printf("Tipo de evento desconhecido: %s", message.DetailType)
 		return nil // Ignora eventos desconhecidos
 	}
 }
@@ -156,11 +156,11 @@ func (h *NotificationHandler) sendEmail(to, subject, body string) error {
 	}
 
 	if err := h.emailService.Send(message); err != nil {
-		log.Printf("Failed to send email to %s: %v", to, err)
+		log.Printf("Falha ao enviar email para %s: %v", to, err)
 		return err
 	}
 
-	log.Printf("Email sent successfully to %s", to)
+	log.Printf("Email enviado com sucesso para %s", to)
 	return nil
 }
 

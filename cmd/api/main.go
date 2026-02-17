@@ -149,8 +149,8 @@ func main() {
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	log.Printf("Starting server on %s", addr)
+	log.Printf("Iniciando servidor em %s", addr)
 	if err := engine.Run(addr); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		log.Fatalf("Falha ao iniciar servidor: %v", err)
 	}
 }

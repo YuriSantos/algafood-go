@@ -57,16 +57,16 @@ func createDatabaseIfNotExists(cfg *DatabaseConfig) error {
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return fmt.Errorf("failed to connect to MySQL server: %w", err)
+		return fmt.Errorf("falha ao conectar ao servidor MySQL: %w", err)
 	}
 	defer db.Close()
 
 	// Create database if not exists
 	_, err = db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", cfg.Name))
 	if err != nil {
-		return fmt.Errorf("failed to create database: %w", err)
+		return fmt.Errorf("falha ao criar banco de dados: %w", err)
 	}
 
-	log.Printf("Database '%s' is ready", cfg.Name)
+	log.Printf("Banco de dados '%s' está pronto", cfg.Name)
 	return nil
 }
