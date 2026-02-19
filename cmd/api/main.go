@@ -51,21 +51,26 @@ func main() {
 	authSvc := service.NewAuthService(&cfg.JWT)
 	tokenBlacklistSvc := service.NewTokenBlacklistService(&cfg.Redis, &cfg.JWT)
 
+	// Initialize cache services
+	userCacheSvc := service.NewUserCacheService(&cfg.Redis)
+	locationCacheSvc := service.NewLocationCacheService(&cfg.Redis)
+	businessCacheSvc := service.NewBusinessCacheService(&cfg.Redis)
+
 	// Verifica conexão com Redis
 	if err := tokenBlacklistSvc.Ping(); err != nil {
-		log.Printf("Warning: Failed to connect to Redis: %v. Token blacklist will not work correctly.", err)
+		log.Printf("Aviso: Falha ao conectar ao Redis: %v. Cache e blacklist não funcionarão.", err)
 	} else {
-		log.Println("Connected to Redis successfully")
+		log.Println("Conectado ao Redis com sucesso")
 	}
 
-	estadoSvc := service.NewEstadoService(estadoRepo)
-	cidadeSvc := service.NewCidadeService(cidadeRepo, estadoSvc)
-	cozinhaSvc := service.NewCozinhaService(cozinhaRepo)
-	formaPagamentoSvc := service.NewFormaPagamentoService(formaPagamentoRepo)
+	estadoSvc := service.NewEstadoService(estadoRepo, locationCacheSvc)
+	cidadeSvc := service.NewCidadeService(cidadeRepo, estadoSvc, locationCacheSvc)
+	cozinhaSvc := service.NewCozinhaService(cozinhaRepo, businessCacheSvc)
+	formaPagamentoSvc := service.NewFormaPagamentoService(formaPagamentoRepo, businessCacheSvc)
 	permissaoSvc := service.NewPermissaoService(permissaoRepo)
 	grupoSvc := service.NewGrupoService(grupoRepo, permissaoSvc)
-	usuarioSvc := service.NewUsuarioService(usuarioRepo, grupoSvc)
-	restauranteSvc := service.NewRestauranteService(restauranteRepo, cozinhaSvc, cidadeSvc, formaPagamentoSvc, usuarioSvc)
+	usuarioSvc := service.NewUsuarioService(usuarioRepo, grupoSvc, userCacheSvc)
+	restauranteSvc := service.NewRestauranteService(restauranteRepo, cozinhaSvc, cidadeSvc, formaPagamentoSvc, usuarioSvc, businessCacheSvc)
 	produtoSvc := service.NewProdutoService(produtoRepo, restauranteSvc)
 	pedidoSvc := service.NewPedidoService(pedidoRepo, restauranteSvc, cidadeSvc, usuarioSvc, produtoSvc, formaPagamentoSvc)
 

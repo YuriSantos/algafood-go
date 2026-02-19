@@ -47,10 +47,8 @@ func (r *pedidoRepositoryImpl) FindAll(filter *domainRepo.PedidoFilter, page *pa
 
 	query.Count(&total)
 
+	// Busca apenas dados básicos - relacionamentos serão populados via cache no serviço
 	if err := query.
-		Preload("Restaurante").
-		Preload("Cliente").
-		Preload("FormaPagamento").
 		Offset(page.Offset()).
 		Limit(page.Size).
 		Order("data_criacao DESC").
@@ -63,15 +61,9 @@ func (r *pedidoRepositoryImpl) FindAll(filter *domainRepo.PedidoFilter, page *pa
 
 func (r *pedidoRepositoryImpl) FindByCodigo(codigo string) (*model.Pedido, error) {
 	var pedido model.Pedido
+	// Carrega apenas os itens - os outros relacionamentos serão populados via cache no serviço
 	if err := r.db.
-		Preload("Restaurante").
-		Preload("Restaurante.Cozinha").
-		Preload("Cliente").
-		Preload("FormaPagamento").
 		Preload("Itens").
-		Preload("Itens.Produto").
-		Preload("EnderecoEntrega.Cidade").
-		Preload("EnderecoEntrega.Cidade.Estado").
 		Where("codigo = ?", codigo).
 		First(&pedido).Error; err != nil {
 		return nil, err
@@ -80,7 +72,9 @@ func (r *pedidoRepositoryImpl) FindByCodigo(codigo string) (*model.Pedido, error
 }
 
 func (r *pedidoRepositoryImpl) Save(pedido *model.Pedido) error {
-	return r.db.Save(pedido).Error
+	// Usa Omit para evitar que o GORM tente inserir/atualizar as associações
+	// Apenas os IDs das foreign keys serão salvos
+	return r.db.Omit("Restaurante", "Cliente", "FormaPagamento", "EnderecoEntrega.Cidade", "Itens.Produto").Save(pedido).Error
 }
 
 func (r *pedidoRepositoryImpl) IsPedidoGerenciadoPor(codigoPedido string, usuarioID uint64) (bool, error) {

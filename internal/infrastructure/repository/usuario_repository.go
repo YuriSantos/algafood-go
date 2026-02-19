@@ -24,7 +24,7 @@ func (r *usuarioRepositoryImpl) FindAll() ([]model.Usuario, error) {
 
 func (r *usuarioRepositoryImpl) FindByID(id uint64) (*model.Usuario, error) {
 	var usuario model.Usuario
-	if err := r.db.Preload("Grupos").First(&usuario, id).Error; err != nil {
+	if err := r.db.Preload("Grupos.Permissoes").First(&usuario, id).Error; err != nil {
 		return nil, err
 	}
 	return &usuario, nil

@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"log"
 
 	"github.com/yurisasc/algafood-go/internal/domain/exception"
 	"github.com/yurisasc/algafood-go/internal/domain/model"
@@ -15,6 +16,7 @@ type RestauranteService struct {
 	cidadeSvc         *CidadeService
 	formaPagamentoSvc *FormaPagamentoService
 	usuarioSvc        *UsuarioService
+	cacheSvc          *BusinessCacheService
 }
 
 func NewRestauranteService(
@@ -23,6 +25,7 @@ func NewRestauranteService(
 	cidadeSvc *CidadeService,
 	formaPagamentoSvc *FormaPagamentoService,
 	usuarioSvc *UsuarioService,
+	cacheSvc *BusinessCacheService,
 ) *RestauranteService {
 	return &RestauranteService{
 		repo:              repo,
@@ -30,6 +33,7 @@ func NewRestauranteService(
 		cidadeSvc:         cidadeSvc,
 		formaPagamentoSvc: formaPagamentoSvc,
 		usuarioSvc:        usuarioSvc,
+		cacheSvc:          cacheSvc,
 	}
 }
 
@@ -38,6 +42,37 @@ func (s *RestauranteService) FindAll() ([]model.Restaurante, error) {
 }
 
 func (s *RestauranteService) FindByID(id uint64) (*model.Restaurante, error) {
+	// Tenta obter do cache primeiro
+	if s.cacheSvc != nil {
+		if cached, err := s.cacheSvc.GetRestaurante(id); err == nil && cached != nil {
+			restaurante := cached.ToModel()
+
+			// Popula cozinha do cache
+			if cached.CozinhaID > 0 {
+				if cozinha, err := s.cozinhaSvc.FindByID(cached.CozinhaID); err == nil {
+					restaurante.Cozinha = *cozinha
+				}
+			}
+
+			// Popula cidade do endereço do cache
+			if cached.EnderecoCidadeID > 0 {
+				if cidade, err := s.cidadeSvc.FindByID(cached.EnderecoCidadeID); err == nil {
+					restaurante.Endereco.Cidade = *cidade
+					restaurante.Endereco.CidadeID = cidade.ID
+				}
+			}
+
+			// Popula formas de pagamento do cache
+			for _, fpID := range cached.FormasPagamentoIDs {
+				if fp, err := s.formaPagamentoSvc.FindByID(fpID); err == nil {
+					restaurante.FormasPagamento = append(restaurante.FormasPagamento, *fp)
+				}
+			}
+
+			return restaurante, nil
+		}
+	}
+
 	restaurante, err := s.repo.FindByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -45,6 +80,14 @@ func (s *RestauranteService) FindByID(id uint64) (*model.Restaurante, error) {
 		}
 		return nil, err
 	}
+
+	// Armazena no cache
+	if s.cacheSvc != nil {
+		if err := s.cacheSvc.SetRestaurante(restaurante); err != nil {
+			log.Printf("Aviso: Falha ao armazenar restaurante %d no cache: %v", id, err)
+		}
+	}
+
 	return restaurante, nil
 }
 
@@ -65,7 +108,17 @@ func (s *RestauranteService) Save(restaurante *model.Restaurante) error {
 		restaurante.Endereco.Cidade = *cidade
 	}
 
-	return s.repo.Save(restaurante)
+	err = s.repo.Save(restaurante)
+	if err != nil {
+		return err
+	}
+
+	// Invalida cache
+	if s.cacheSvc != nil {
+		s.cacheSvc.InvalidateRestaurante(restaurante.ID)
+	}
+
+	return nil
 }
 
 func (s *RestauranteService) Ativar(id uint64) error {
@@ -74,7 +127,12 @@ func (s *RestauranteService) Ativar(id uint64) error {
 		return err
 	}
 	restaurante.Ativar()
-	return s.repo.Save(restaurante)
+	err = s.repo.Save(restaurante)
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(id)
+	return nil
 }
 
 func (s *RestauranteService) Inativar(id uint64) error {
@@ -83,7 +141,12 @@ func (s *RestauranteService) Inativar(id uint64) error {
 		return err
 	}
 	restaurante.Inativar()
-	return s.repo.Save(restaurante)
+	err = s.repo.Save(restaurante)
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(id)
+	return nil
 }
 
 func (s *RestauranteService) AtivarEmMassa(ids []uint64) error {
@@ -110,7 +173,12 @@ func (s *RestauranteService) Abrir(id uint64) error {
 		return err
 	}
 	restaurante.Abrir()
-	return s.repo.Save(restaurante)
+	err = s.repo.Save(restaurante)
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(id)
+	return nil
 }
 
 func (s *RestauranteService) Fechar(id uint64) error {
@@ -119,7 +187,12 @@ func (s *RestauranteService) Fechar(id uint64) error {
 		return err
 	}
 	restaurante.Fechar()
-	return s.repo.Save(restaurante)
+	err = s.repo.Save(restaurante)
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(id)
+	return nil
 }
 
 func (s *RestauranteService) AssociarFormaPagamento(restauranteID, formaPagamentoID uint64) error {
@@ -129,7 +202,12 @@ func (s *RestauranteService) AssociarFormaPagamento(restauranteID, formaPagament
 	if _, err := s.formaPagamentoSvc.FindByID(formaPagamentoID); err != nil {
 		return err
 	}
-	return s.repo.AddFormaPagamento(restauranteID, formaPagamentoID)
+	err := s.repo.AddFormaPagamento(restauranteID, formaPagamentoID)
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(restauranteID)
+	return nil
 }
 
 func (s *RestauranteService) DesassociarFormaPagamento(restauranteID, formaPagamentoID uint64) error {
@@ -139,7 +217,12 @@ func (s *RestauranteService) DesassociarFormaPagamento(restauranteID, formaPagam
 	if _, err := s.formaPagamentoSvc.FindByID(formaPagamentoID); err != nil {
 		return err
 	}
-	return s.repo.RemoveFormaPagamento(restauranteID, formaPagamentoID)
+	err := s.repo.RemoveFormaPagamento(restauranteID, formaPagamentoID)
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(restauranteID)
+	return nil
 }
 
 func (s *RestauranteService) AssociarResponsavel(restauranteID, usuarioID uint64) error {
@@ -149,7 +232,12 @@ func (s *RestauranteService) AssociarResponsavel(restauranteID, usuarioID uint64
 	if _, err := s.usuarioSvc.FindByID(usuarioID); err != nil {
 		return err
 	}
-	return s.repo.AddResponsavel(restauranteID, usuarioID)
+	err := s.repo.AddResponsavel(restauranteID, usuarioID)
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(restauranteID)
+	return nil
 }
 
 func (s *RestauranteService) DesassociarResponsavel(restauranteID, usuarioID uint64) error {
@@ -159,5 +247,16 @@ func (s *RestauranteService) DesassociarResponsavel(restauranteID, usuarioID uin
 	if _, err := s.usuarioSvc.FindByID(usuarioID); err != nil {
 		return err
 	}
-	return s.repo.RemoveResponsavel(restauranteID, usuarioID)
+	err := s.repo.RemoveResponsavel(restauranteID, usuarioID)
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(restauranteID)
+	return nil
+}
+
+func (s *RestauranteService) invalidateCache(id uint64) {
+	if s.cacheSvc != nil {
+		s.cacheSvc.InvalidateRestaurante(id)
+	}
 }
