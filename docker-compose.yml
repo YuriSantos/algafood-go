@@ -1,0 +1,151 @@
+services:
+  # Banco de dados MySQL
+  algafood-mysql:
+    image: mysql:8.0
+    container_name: algafood-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: Teste@1992
+      MYSQL_DATABASE: algafood
+      MYSQL_USER: algafood
+      MYSQL_PASSWORD: algafood123
+    ports:
+      - "13306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - algafood-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Redis para cache e sessões
+  algafood-redis:
+    image: redis:7-alpine
+    container_name: algafood-redis
+    restart: unless-stopped
+    ports:
+      - "16379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - algafood-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # LocalStack para simulação AWS
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: algafood-localstack
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - DEBUG=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - SERVICES=s3,ses,sqs,sns,eventbridge,cloudwatch
+      - DATA_DIR=/var/lib/localstack/data
+      - HOSTNAME_EXTERNAL=localhost
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - PERSISTENCE=1
+      - LAMBDA_EXECUTOR=docker
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/localstack-setup.sh:/etc/localstack/init/ready.d/init-aws.sh
+    networks:
+      - algafood-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # MailHog para desenvolvimento de emails
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: algafood-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    networks:
+      - algafood-network
+
+  # API AlgaFood
+  algafood-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algafood-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=algafood-mysql
+      - DB_PORT=3306
+      - DB_USER=algafood
+      - DB_PASSWORD=algafood123
+      - DB_NAME=algafood
+      - REDIS_HOST=algafood-redis
+      - REDIS_PORT=6379
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+    depends_on:
+      algafood-mysql:
+        condition: service_healthy
+      algafood-redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - algafood-network
+    volumes:
+      - ./config.docker.yaml:/app/config.yaml:ro
+
+  # Nginx como proxy reverso (opcional) - COMENTADO TEMPORARIAMENTE
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: algafood-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+  #   depends_on:
+  #     - algafood-api
+  #   networks:
+  #     - algafood-network
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  localstack_data:
+    driver: local
+
+networks:
+  algafood-network:
+    driver: bridge
+
+
+
+
+

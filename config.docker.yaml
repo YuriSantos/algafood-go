@@ -1,0 +1,49 @@
+# Configuração para desenvolvimento com Docker
+server:
+  port: 8080
+  mode: "debug"
+  compression_enabled: true
+
+database:
+  host: algafood-mysql
+  port: 3306
+  user: algafood
+  password: algafood123
+  name: algafood
+  charset: utf8mb4
+  parseTime: true
+  loc: Local
+
+redis:
+  host: algafood-redis
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  issuer: "algafood-api"
+
+email:
+  impl: "SES"
+  remetente: "noreply@algafood.com.br"
+
+# Configurações AWS (LocalStack)
+aws:
+  region: us-east-1
+  endpoint: http://localstack:4566
+
+# SQS
+sqs:
+  queue:
+    pedido_status: algafood-pedido-status
+
+# EventBridge
+eventbridge:
+  bus_name: algafood-event-bus
+
+# Storage
+storage:
+  s3:
+    bucket: algafood-fotos-produtos
+
+

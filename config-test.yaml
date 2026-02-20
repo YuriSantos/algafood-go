@@ -1,0 +1,32 @@
+# Test simple server config
+server:
+  port: 8080
+
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: Teste@1992
+  name: algafood
+  charset: utf8mb4
+  parseTime: true
+  loc: Local
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  issuer: "algafood-api"
+
+email:
+  impl: "FAKE"
+  remetente: "test@algafood.com.br"
+
+aws:
+  region: "us-east-1"
+  credentials:
+    access_key: "test"
+    secret_key: "test"

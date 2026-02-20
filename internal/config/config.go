@@ -167,24 +167,43 @@ type SwaggerUIOAuthConfig struct {
 }
 
 func Load() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./config")
-
-	// Enable environment variable override
-	viper.SetEnvPrefix("ALGAFOOD")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
-
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+	// Lista de arquivos de configuração para tentar, em ordem de prioridade
+	configFiles := []string{
+		"/app/config.yaml",   // Docker (novo diretório com permissões)
+		"/root/config.yaml",  // Docker (fallback)
+		"./config.yaml",      // Local
+		"./config-test.yaml", // Teste
+		"config.yaml",        // Diretório atual
 	}
 
-	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	var lastErr error
+
+	// Tenta carregar cada arquivo de configuração
+	for _, configFile := range configFiles {
+		viper.Reset() // Limpa configuração anterior
+
+		viper.SetConfigFile(configFile)
+
+		// Enable environment variable override
+		viper.SetEnvPrefix("ALGAFOOD")
+		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+		viper.AutomaticEnv()
+
+		if err := viper.ReadInConfig(); err == nil {
+			// Conseguiu carregar o arquivo
+			fmt.Printf("Loaded config from: %s\n", configFile)
+
+			var cfg Config
+			if err := viper.Unmarshal(&cfg); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal config from %s: %w", configFile, err)
+			}
+
+			return &cfg, nil
+		} else {
+			lastErr = err
+		}
 	}
 
-	return &cfg, nil
+	// Se chegou aqui, não conseguiu carregar nenhum arquivo
+	return nil, fmt.Errorf("failed to read any config file (last error: %v). Tried: %v", lastErr, configFiles)
 }
