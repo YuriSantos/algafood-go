@@ -50,7 +50,7 @@ services:
     environment:
       - DEBUG=1
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - SERVICES=s3,ses,sqs,sns,eventbridge,cloudwatch
+      - SERVICES=s3,ses,sqs,sns,events,cloudwatch
       - DATA_DIR=/var/lib/localstack/data
       - HOSTNAME_EXTERNAL=localhost
       - AWS_DEFAULT_REGION=us-east-1
