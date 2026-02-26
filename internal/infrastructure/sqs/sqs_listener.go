@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -42,6 +43,7 @@ type SQSListener struct {
 	visibilityTimeout int32
 	running           bool
 	stopChan          chan struct{}
+	stopOnce          sync.Once
 }
 
 // NewSQSListener cria um novo listener SQS
@@ -142,7 +144,9 @@ func (l *SQSListener) Start(ctx context.Context) {
 // Stop para o listener
 func (l *SQSListener) Stop() {
 	l.running = false
-	close(l.stopChan)
+	l.stopOnce.Do(func() {
+		close(l.stopChan)
+	})
 }
 
 // pollMessages busca e processa mensagens da fila
@@ -159,8 +163,15 @@ func (l *SQSListener) pollMessages(ctx context.Context) {
 
 	result, err := l.client.ReceiveMessage(ctx, input)
 	if err != nil {
+		if ctx.Err() != nil || !l.running {
+			return
+		}
 		log.Printf("Erro ao receber mensagens do SQS (fila: %s): %v", l.queueURL, err)
-		time.Sleep(5 * time.Second) // Backoff em caso de erro
+		select {
+		case <-time.After(5 * time.Second):
+		case <-ctx.Done():
+		case <-l.stopChan:
+		}
 		return
 	}
 

@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yurisasc/algafood-go/internal/api"
@@ -21,6 +23,9 @@ import (
 )
 
 func main() {
+	appCtx, stopSignal := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignal()
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -96,24 +101,16 @@ func main() {
 
 	// Initialize SQS listener for notifications
 	notificationHandler := notification.NewNotificationHandler(emailSvc)
-	sqsListener, err := sqs.NewSQSListenerFromConfig(&cfg.SQS, &cfg.AWS, notificationHandler)
+	var sqsListener sqs.SQSListenerInterface
+	sqsEnabled := false
+
+	sqsListener, err = sqs.NewSQSListenerFromConfig(&cfg.SQS, &cfg.AWS, notificationHandler)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize SQS listener: %v", err)
 	} else {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		sqsListener.Start(ctx)
+		sqsListener.Start(appCtx)
+		sqsEnabled = true
 		log.Println("SQS listener started successfully")
-
-		// Graceful shutdown
-		go func() {
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-			<-sigChan
-			log.Println("Shutting down SQS listener...")
-			sqsListener.Stop()
-			cancel()
-		}()
 	}
 
 	// Initialize handlers
@@ -154,8 +151,39 @@ func main() {
 
 	// Start server
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	log.Printf("Iniciando servidor em %s", addr)
-	if err := engine.Run(addr); err != nil {
-		log.Fatalf("Falha ao iniciar servidor: %v", err)
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: engine,
+	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("Iniciando servidor em %s", addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case err := <-serverErr:
+		if err != nil {
+			log.Fatalf("Falha ao iniciar servidor: %v", err)
+		}
+	case <-appCtx.Done():
+		log.Println("Sinal de encerramento recebido. Finalizando aplicação...")
+	}
+
+	if sqsEnabled {
+		log.Println("Parando SQS listener...")
+		sqsListener.Stop()
+	}
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelShutdown()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Erro ao encerrar servidor HTTP: %v", err)
+	} else {
+		log.Println("Servidor HTTP encerrado com sucesso")
 	}
 }

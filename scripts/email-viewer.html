@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalStack Email Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .email-container { border: 1px solid #ccc; margin: 10px 0; padding: 15px; border-radius: 5px; }
+        .email-header { background-color: #f5f5f5; padding: 10px; margin: -15px -15px 15px -15px; border-radius: 5px 5px 0 0; }
+        .email-body { background-color: #fff; padding: 10px; border: 1px solid #eee; border-radius: 3px; }
+        .stats { background-color: #e7f3ff; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .btn { padding: 10px 15px; margin: 5px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        .btn:hover { background-color: #0056b3; }
+        .error { color: red; background-color: #ffe6e6; padding: 10px; border-radius: 5px; }
+        .success { color: green; background-color: #e6ffe6; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>📧 LocalStack Email Viewer</h1>
+
+    <div class="stats">
+        <h3>📊 Estatísticas SES</h3>
+        <div id="ses-stats">Carregando...</div>
+        <button class="btn" onclick="loadSESStats()">🔄 Atualizar Estatísticas</button>
+        <button class="btn" onclick="loadEmails()">📧 Verificar Emails</button>
+    </div>
+
+    <div id="emails-container">
+        <h3>📬 Emails Enviados</h3>
+        <div id="emails-list">Clique em "Verificar Emails" para carregar...</div>
+    </div>
+
+    <div style="margin-top: 30px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+        <h4>ℹ️ Como funciona:</h4>
+        <ul>
+            <li>Esta interface consulta o LocalStack SES para mostrar emails enviados</li>
+            <li>O LocalStack armazena emails em memória (perdidos ao reiniciar)</li>
+            <li>Para ver emails em tempo real, monitore os logs: <code>docker logs algafood-localstack-1 -f</code></li>
+            <li>Interface oficial: <a href="http://localhost:4566" target="_blank">http://localhost:4566</a></li>
+        </ul>
+    </div>
+
+    <script>
+        async function loadSESStats() {
+            const statsDiv = document.getElementById('ses-stats');
+            statsDiv.innerHTML = 'Carregando estatísticas...';
+
+            try {
+                // Simula chamada para AWS CLI via LocalStack
+                const response = await fetch('/ses-stats');
+                if (!response.ok) {
+                    throw new Error('Erro ao carregar estatísticas');
+                }
+                const data = await response.json();
+
+                let html = '<table border="1" cellpadding="5"><tr><th>Timestamp</th><th>Tentativas</th><th>Bounces</th><th>Complaints</th><th>Rejeições</th></tr>';
+                data.SendDataPoints?.forEach(point => {
+                    html += `<tr>
+                        <td>${new Date(point.Timestamp).toLocaleString()}</td>
+                        <td>${point.DeliveryAttempts}</td>
+                        <td>${point.Bounces}</td>
+                        <td>${point.Complaints}</td>
+                        <td>${point.Rejects}</td>
+                    </tr>`;
+                });
+                html += '</table>';
+                statsDiv.innerHTML = html;
+            } catch (error) {
+                statsDiv.innerHTML = `<div class="error">❌ Erro: ${error.message}<br><br>
+                    <strong>Para ver as estatísticas, execute:</strong><br>
+                    <code>aws --endpoint-url=http://localhost:4566 ses get-send-statistics</code>
+                </div>`;
+            }
+        }
+
+        async function loadEmails() {
+            const emailsDiv = document.getElementById('emails-list');
+            emailsDiv.innerHTML = '🔄 Verificando emails enviados...';
+
+            // Como o LocalStack não expõe emails diretamente via API REST,
+            // mostramos instruções sobre como visualizar
+            emailsDiv.innerHTML = `
+                <div class="error">
+                    ��� <strong>Para visualizar emails enviados no LocalStack:</strong><br><br>
+
+                    <strong>1. Via Logs (Método Principal):</strong><br>
+                    <code>docker logs algafood-localstack-1 --since="1h" | findstr -i "SendEmail\\|ses"</code><br><br>
+
+                    <strong>2. Via AWS CLI:</strong><br>
+                    <code>aws --endpoint-url=http://localhost:4566 ses get-send-statistics</code><br><br>
+
+                    <strong>3. Interface Web LocalStack Pro:</strong><br>
+                    <a href="http://localhost:4566" target="_blank">http://localhost:4566</a> (se disponível)<br><br>
+
+                    <strong>4. Para capturar emails em tempo real, use MailHog:</strong><br>
+                    <code>docker run --rm -p 8025:8025 mailhog/mailhog</code><br>
+                    Depois configure a aplicação para usar: <code>localhost:1025</code> como SMTP
+                </div>
+            `;
+        }
+
+        // Carrega estatísticas ao abrir a página
+        window.addEventListener('load', loadSESStats);
+    </script>
+</body>
+</html>
